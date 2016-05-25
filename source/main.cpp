@@ -23,7 +23,6 @@
 #include <fat.h>
 #include <sdcard/wiisd_io.h>
 #include <ogc/machine/processor.h>
-#include <wiiuse/wpad.h>
 #include "apploader.h"
 #include "memory.h"
 #include "utils.h"
@@ -47,7 +46,7 @@ extern "C" {
 extern void __exception_closeall();
 }
 
-int main()
+int main(int argc, char **argv)
 {
 	if ( (*(u32*)(0xCD8005A0) >> 16 ) == 0xCAFE ) // Wii U
 	{
@@ -58,8 +57,6 @@ int main()
 	InitGecko();
 	gprintf("MinimaLauncher v1.2\n");
 	VIDEO_Init();
-	WPAD_Init();
-	PAD_Init();
 
 	/* Setup Low Memory */
 	Disc_SetLowMemPre();
@@ -68,7 +65,7 @@ int main()
 	WDVD_Init();
 	u32 disc_check = 0;
 	WDVD_GetCoverStatus(&disc_check);
-	if(disc_check & 0x2)
+	if(disc_check & 0x2 && argc >= 3)
 	{
 		/* Open up Disc */
 		Disc_Open();
@@ -105,46 +102,25 @@ int main()
 			if(sd->isInserted())
 				gprintf("sd inserted!\n");
 			fatMountSimple("sd", sd);
+
 			/* gameconfig */
-			if((*(u32*)Disc_ID & 0xFFFFFF00) == 0x52534200)//rsb?01 brawl
-				app_gameconfig_load((char*)Disc_ID, (u8*)gameconfig_ssbb, gameconfig_ssbb_size);
-			else if(*(u32*)Disc_ID == 0x53554B45)//suke01 kirby
-				app_gameconfig_load((char*)Disc_ID, (u8*)gameconfig_kirby, gameconfig_kirby_size);			
-			else
-			{
-				f = fopen("sd:/gameconfig.txt", "rb");
-				if(f != NULL)
-				{
-					fseek(f, 0, SEEK_END);
-					fsize = ftell(f);
-					rewind(f);
-					u8 *gameconfig = (u8*)malloc(fsize);
-					fread(gameconfig, fsize, 1, f);
-					fclose(f);
-					app_gameconfig_load((char*)Disc_ID, gameconfig, fsize);
-					free(gameconfig);
-				}
-			}
+                        f = fopen(argv[1], "rb");
+                        if(f != NULL)
+                        {
+                            fseek(f, 0, SEEK_END);
+                            fsize = ftell(f);
+                            rewind(f);
+                            u8 *gameconfig = (u8*)malloc(fsize);
+                            fread(gameconfig, fsize, 1, f);
+                            fclose(f);
+                            app_gameconfig_load((char*)Disc_ID, gameconfig, fsize);
+                            free(gameconfig);
+                        }
+
 			/* gct */
-			char gamepath[22];
-			if((*(u32*)Disc_ID & 0xFFFFFF00) == 0x52534200)//rsb?01 brawl
-			{
-				PAD_ScanPads();
-				u32 pad_down = PAD_ButtonsDown(0) | PAD_ButtonsDown(1) | PAD_ButtonsDown(2) | PAD_ButtonsDown(3);
-				WPAD_ScanPads();
-				u32 wpad_down = WPAD_ButtonsDown(0) | WPAD_ButtonsDown(1) | WPAD_ButtonsDown(2) | WPAD_ButtonsDown(3);
-				if ((wpad_down & WPAD_BUTTON_LEFT) || (pad_down & PAD_BUTTON_LEFT))
-					sprintf(gamepath, "sd:/codes/ProjectM.gct");
-				else if ((wpad_down & WPAD_BUTTON_RIGHT) || (pad_down & PAD_BUTTON_RIGHT))
-					sprintf(gamepath, "sd:/codes/Minus.gct");
-				else
-					sprintf(gamepath, "sd:/codes/%.6s.gct", (char*)Disc_ID);
-			}
-			else
-			{
-				sprintf(gamepath, "sd:/codes/%.6s.gct", (char*)Disc_ID);
-			}
+                        char *gamepath = argv[2];
 			gprintf("%s\n", gamepath);
+
 			f = fopen(gamepath, "rb");
 			if(f != NULL)
 			{
@@ -203,6 +179,7 @@ int main()
 			IRQ_Restore(level);
 		}
 	}
+
 	/* Fail, init chan launching */
 	WII_Initialize();
 	/* goto HBC */
